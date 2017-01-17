@@ -130,6 +130,12 @@ public interface Renderer extends ExoPlayerComponent {
       throws ExoPlaybackException;
 
   /**
+   * Updates the shared information among renderers used by the current selection of tracks.
+   */
+  void updateRenderersSharedInfo(RenderersSharedInfo renderersSharedInfo)
+      throws ExoPlaybackException;
+
+  /**
    * Returns the {@link SampleStream} being consumed, or null if the renderer is disabled.
    */
   SampleStream getStream();

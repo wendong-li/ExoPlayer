@@ -34,6 +34,7 @@ public abstract class BaseRenderer implements Renderer, RendererCapabilities {
   private long streamOffsetUs;
   private boolean readEndOfStream;
   private boolean streamIsFinal;
+  protected RenderersSharedInfo renderersSharedInfo;
 
   /**
    * @param trackType The track type that the renderer handles. One of the {@link C}
@@ -94,6 +95,13 @@ public abstract class BaseRenderer implements Renderer, RendererCapabilities {
     readEndOfStream = false;
     streamOffsetUs = offsetUs;
     onStreamChanged(formats);
+  }
+
+  @Override
+  public void updateRenderersSharedInfo(RenderersSharedInfo renderersSharedInfo)
+      throws ExoPlaybackException {
+    this.renderersSharedInfo = renderersSharedInfo;
+    onRenderersSharedInfoUpdated();
   }
 
   @Override
@@ -183,6 +191,19 @@ public abstract class BaseRenderer implements Renderer, RendererCapabilities {
    * @throws ExoPlaybackException If an error occurs.
    */
   protected void onStreamChanged(Format[] formats) throws ExoPlaybackException {
+    // Do nothing.
+  }
+
+  /**
+   * Called when the shared information for the current set of renderers has changed. This occurs
+   * after {@link #onStreamChanged(Format[])} has been called and indicates the settings of current
+   * set of renderers may be about to change due to the change of the source format.
+   * <p>
+   * The default implementation is a no-op.
+   *
+   * @throws ExoPlaybackException If an error occurs.
+   */
+  protected void onRenderersSharedInfoUpdated() throws ExoPlaybackException {
     // Do nothing.
   }
 

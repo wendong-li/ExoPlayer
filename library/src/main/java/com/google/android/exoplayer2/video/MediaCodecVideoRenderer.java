@@ -210,9 +210,6 @@ public class MediaCodecVideoRenderer extends MediaCodecRenderer {
   @Override
   protected void onEnabled(boolean joining) throws ExoPlaybackException {
     super.onEnabled(joining);
-    // TODO: Allow this to be set.
-    tunnelingAudioSessionId = C.AUDIO_SESSION_ID_UNSET;
-    tunneling = tunnelingAudioSessionId != C.AUDIO_SESSION_ID_UNSET;
     eventDispatcher.enabled(decoderCounters);
     frameReleaseTimeHelper.enable();
   }
@@ -319,7 +316,18 @@ public class MediaCodecVideoRenderer extends MediaCodecRenderer {
   }
 
   @Override
+  protected boolean isCodecOutputTunneled() {
+    return tunneling;
+  }
+
+  @Override
   protected void configureCodec(MediaCodec codec, Format format, MediaCrypto crypto) {
+    // Update tunneling flag right before we start configuring codec
+    if (renderersSharedInfo.usesVideoTunneling) {
+      tunneling = true;
+      tunnelingAudioSessionId = renderersSharedInfo.audioSessionId;
+    }
+
     codecMaxValues = getCodecMaxValues(format, streamFormats);
     MediaFormat mediaFormat = getMediaFormat(format, codecMaxValues, deviceNeedsAutoFrcWorkaround,
         tunnelingAudioSessionId);
@@ -387,7 +395,9 @@ public class MediaCodecVideoRenderer extends MediaCodecRenderer {
         && newFormat.width <= codecMaxValues.width && newFormat.height <= codecMaxValues.height
         && newFormat.maxInputSize <= codecMaxValues.inputSize
         && (codecIsAdaptive
-        || (oldFormat.width == newFormat.width && oldFormat.height == newFormat.height));
+        || (oldFormat.width == newFormat.width && oldFormat.height == newFormat.height))
+        && tunneling == renderersSharedInfo.usesVideoTunneling
+        && (!tunneling || tunnelingAudioSessionId == renderersSharedInfo.audioSessionId);
   }
 
   @Override

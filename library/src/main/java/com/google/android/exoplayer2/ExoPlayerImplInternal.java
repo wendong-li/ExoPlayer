@@ -1174,6 +1174,7 @@ import java.io.IOException;
             }
             renderer.replaceStream(formats, readingPeriodHolder.sampleStreams[i],
                 readingPeriodHolder.getRendererOffset());
+            renderer.updateRenderersSharedInfo(readingPeriodHolder.renderersSharedInfo);
           } else {
             // The renderer will be disabled when transitioning to playing the next period. Mark the
             // SampleStream as final to play out any remaining data.
@@ -1365,6 +1366,7 @@ import java.io.IOException;
           // Enable the renderer.
           renderer.enable(formats, playingPeriodHolder.sampleStreams[i], rendererPositionUs,
               joining, playingPeriodHolder.getRendererOffset());
+          renderer.updateRenderersSharedInfo(playingPeriodHolder.renderersSharedInfo);
           MediaClock mediaClock = renderer.getMediaClock();
           if (mediaClock != null) {
             if (rendererMediaClock != null) {
@@ -1410,6 +1412,8 @@ import java.io.IOException;
     private final MediaSource mediaSource;
 
     private TrackSelectionArray periodTrackSelections;
+
+    private RenderersSharedInfo renderersSharedInfo;
 
     public MediaPeriodHolder(Renderer[] renderers, RendererCapabilities[] rendererCapabilities,
         long rendererPositionOffsetUs, TrackSelector trackSelector, LoadControl loadControl,
@@ -1467,6 +1471,8 @@ import java.io.IOException;
         return false;
       }
       trackSelectorResult = selectorResult;
+      renderersSharedInfo = RenderersSharedInfo.buildFrom(trackSelectorResult,
+          rendererCapabilities);
       return true;
     }
 

@@ -354,7 +354,12 @@ public abstract class MediaCodecRenderer extends BaseRenderer {
       onCodecInitialized(codecName, codecInitializedTimestamp,
           codecInitializedTimestamp - codecInitializingTimestamp);
       inputBuffers = codec.getInputBuffers();
-      outputBuffers = codec.getOutputBuffers();
+      if (!isCodecOutputTunneled()) {
+        outputBuffers = codec.getOutputBuffers();
+      } else {
+        // Output buffers will be processed by codec itself
+        outputBuffers = null;
+      }
     } catch (Exception e) {
       throwDecoderInitError(new DecoderInitializationException(format, e,
           drmSessionRequiresSecureDecoder, codecName));
@@ -373,6 +378,10 @@ public abstract class MediaCodecRenderer extends BaseRenderer {
 
   protected boolean shouldInitCodec() {
     return codec == null && format != null;
+  }
+
+  protected boolean isCodecOutputTunneled() {
+    return false;
   }
 
   protected final MediaCodec getCodec() {
@@ -481,7 +490,9 @@ public abstract class MediaCodecRenderer extends BaseRenderer {
     maybeInitCodec();
     if (codec != null) {
       TraceUtil.beginSection("drainAndFeed");
-      while (drainOutputBuffer(positionUs, elapsedRealtimeUs)) {}
+      if (!isCodecOutputTunneled()) {
+        while (drainOutputBuffer(positionUs, elapsedRealtimeUs)) {}
+      }
       while (feedInputBuffer()) {}
       TraceUtil.endSection();
     } else if (format != null) {

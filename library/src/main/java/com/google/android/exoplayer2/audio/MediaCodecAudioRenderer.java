@@ -16,6 +16,7 @@
 package com.google.android.exoplayer2.audio;
 
 import android.annotation.TargetApi;
+import android.content.Context;
 import android.media.MediaCodec;
 import android.media.MediaCrypto;
 import android.media.MediaFormat;
@@ -43,6 +44,7 @@ import java.nio.ByteBuffer;
 @TargetApi(16)
 public class MediaCodecAudioRenderer extends MediaCodecRenderer implements MediaClock {
 
+  private final Context context;
   private final EventDispatcher eventDispatcher;
   private final AudioTrack audioTrack;
 
@@ -53,13 +55,15 @@ public class MediaCodecAudioRenderer extends MediaCodecRenderer implements Media
   private boolean allowPositionDiscontinuity;
 
   /**
+   * @param context A context.
    * @param mediaCodecSelector A decoder selector.
    */
-  public MediaCodecAudioRenderer(MediaCodecSelector mediaCodecSelector) {
-    this(mediaCodecSelector, null, true);
+  public MediaCodecAudioRenderer(Context context, MediaCodecSelector mediaCodecSelector) {
+    this(context, mediaCodecSelector, null, true);
   }
 
   /**
+   * @param context A context.
    * @param mediaCodecSelector A decoder selector.
    * @param drmSessionManager For use with encrypted content. May be null if support for encrypted
    *     content is not required.
@@ -69,24 +73,26 @@ public class MediaCodecAudioRenderer extends MediaCodecRenderer implements Media
    *     permitted to play clear regions of encrypted media files before {@code drmSessionManager}
    *     has obtained the keys necessary to decrypt encrypted regions of the media.
    */
-  public MediaCodecAudioRenderer(MediaCodecSelector mediaCodecSelector,
+  public MediaCodecAudioRenderer(Context context, MediaCodecSelector mediaCodecSelector,
       DrmSessionManager<FrameworkMediaCrypto> drmSessionManager,
       boolean playClearSamplesWithoutKeys) {
-    this(mediaCodecSelector, drmSessionManager, playClearSamplesWithoutKeys, null, null);
+    this(context, mediaCodecSelector, drmSessionManager, playClearSamplesWithoutKeys, null, null);
   }
 
   /**
+   * @param context A context.
    * @param mediaCodecSelector A decoder selector.
    * @param eventHandler A handler to use when delivering events to {@code eventListener}. May be
    *     null if delivery of events is not required.
    * @param eventListener A listener of events. May be null if delivery of events is not required.
    */
-  public MediaCodecAudioRenderer(MediaCodecSelector mediaCodecSelector, Handler eventHandler,
-      AudioRendererEventListener eventListener) {
-    this(mediaCodecSelector, null, true, eventHandler, eventListener);
+  public MediaCodecAudioRenderer(Context context, MediaCodecSelector mediaCodecSelector,
+      Handler eventHandler, AudioRendererEventListener eventListener) {
+    this(context, mediaCodecSelector, null, true, eventHandler, eventListener);
   }
 
   /**
+   * @param context A context.
    * @param mediaCodecSelector A decoder selector.
    * @param drmSessionManager For use with encrypted content. May be null if support for encrypted
    *     content is not required.
@@ -99,15 +105,16 @@ public class MediaCodecAudioRenderer extends MediaCodecRenderer implements Media
    *     null if delivery of events is not required.
    * @param eventListener A listener of events. May be null if delivery of events is not required.
    */
-  public MediaCodecAudioRenderer(MediaCodecSelector mediaCodecSelector,
+  public MediaCodecAudioRenderer(Context context, MediaCodecSelector mediaCodecSelector,
       DrmSessionManager<FrameworkMediaCrypto> drmSessionManager,
       boolean playClearSamplesWithoutKeys, Handler eventHandler,
       AudioRendererEventListener eventListener) {
-    this(mediaCodecSelector, drmSessionManager, playClearSamplesWithoutKeys, eventHandler,
+    this(context, mediaCodecSelector, drmSessionManager, playClearSamplesWithoutKeys, eventHandler,
         eventListener, null);
   }
 
   /**
+   * @param context A context.
    * @param mediaCodecSelector A decoder selector.
    * @param drmSessionManager For use with encrypted content. May be null if support for encrypted
    *     content is not required.
@@ -122,11 +129,12 @@ public class MediaCodecAudioRenderer extends MediaCodecRenderer implements Media
    * @param audioCapabilities The audio capabilities for playback on this device. May be null if the
    *     default capabilities (no encoded audio passthrough support) should be assumed.
    */
-  public MediaCodecAudioRenderer(MediaCodecSelector mediaCodecSelector,
+  public MediaCodecAudioRenderer(Context context, MediaCodecSelector mediaCodecSelector,
       DrmSessionManager<FrameworkMediaCrypto> drmSessionManager,
       boolean playClearSamplesWithoutKeys, Handler eventHandler,
       AudioRendererEventListener eventListener, AudioCapabilities audioCapabilities) {
     super(C.TRACK_TYPE_AUDIO, mediaCodecSelector, drmSessionManager, playClearSamplesWithoutKeys);
+    this.context = context;
     audioTrack = new AudioTrack(audioCapabilities, new AudioTrackListener());
     eventDispatcher = new EventDispatcher(eventHandler, eventListener);
   }
@@ -226,6 +234,13 @@ public class MediaCodecAudioRenderer extends MediaCodecRenderer implements Media
     int channelCount = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT);
     int sampleRate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE);
     audioTrack.configure(mimeType, channelCount, sampleRate, pcmEncoding, 0);
+
+    // Enable tunneling before rendering the data from the new format
+    if (renderersSharedInfo.usesVideoTunneling) {
+      audioTrack.enableTunnelingV21(renderersSharedInfo.audioSessionId);
+    } else {
+      audioTrack.disableTunneling();
+    }
   }
 
   /**
@@ -237,7 +252,13 @@ public class MediaCodecAudioRenderer extends MediaCodecRenderer implements Media
    * @see AudioTrack.Listener#onAudioSessionId(int)
    */
   protected void onAudioSessionId(int audioSessionId) {
-    // Do nothing.
+    if (renderersSharedInfo.audioSessionId == C.AUDIO_SESSION_ID_UNSET) {
+      // In non-tunneling mode, the audio session id in renderers shared info won't be used, but
+      // update it anyway
+      renderersSharedInfo.audioSessionId = audioSessionId;
+    } else if (renderersSharedInfo.audioSessionId != audioSessionId) {
+      // Not expected
+    }
   }
 
   /**
@@ -259,12 +280,21 @@ public class MediaCodecAudioRenderer extends MediaCodecRenderer implements Media
   protected void onEnabled(boolean joining) throws ExoPlaybackException {
     super.onEnabled(joining);
     eventDispatcher.enabled(decoderCounters);
-    // TODO: Allow this to be set.
-    int tunnelingAudioSessionId = C.AUDIO_SESSION_ID_UNSET;
-    if (tunnelingAudioSessionId != C.AUDIO_SESSION_ID_UNSET) {
-      audioTrack.enableTunnelingV21(tunnelingAudioSessionId);
-    } else {
-      audioTrack.disableTunneling();
+  }
+
+  @Override
+  protected void onRenderersSharedInfoUpdated() throws ExoPlaybackException {
+    super.onRenderersSharedInfoUpdated();
+
+    // Decide the audio session id for video tunneling
+    if (renderersSharedInfo.usesVideoTunneling) {
+      if (renderersSharedInfo.audioSessionId == C.AUDIO_SESSION_ID_UNSET) {
+        // Reuse the existing session id if possible
+        renderersSharedInfo.audioSessionId = audioTrack.getAudioSessionIdIfTunneling();
+        if (renderersSharedInfo.audioSessionId == C.AUDIO_SESSION_ID_UNSET) {
+          renderersSharedInfo.audioSessionId = C.generateAudioSessionIdV21(context);
+        }
+      }
     }
   }
 

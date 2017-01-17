@@ -836,6 +836,16 @@ public final class AudioTrack {
   }
 
   /**
+   * Returns the current audio session id if tunneling is enabled.
+   *
+   * @return The current audio session id if tunneling is enabled, {@link C#AUDIO_SESSION_ID_UNSET}
+   *     otherwise.
+   */
+  public int getAudioSessionIdIfTunneling() {
+    return tunneling ? audioSessionId : C.AUDIO_SESSION_ID_UNSET;
+  }
+
+  /**
    * Sets the playback volume.
    *
    * @param volume A volume in the range [0.0, 1.0].
